@@ -1,0 +1,59 @@
+HTML5 Parser
+
+Calling document.write() during parsing
+
+Prior to HTML5, Gecko(mozila) and WebKit allowed calls to document.write() during parsing to insert content into the source stream. This behavior was inherently racy, as the content was inserted into a timing-dependent point in the source stream. If the call happened after the parser was done, the inserted content replaced the document. In IE, such calls are either ignored or imply a call to document.open(), replacing the document. In HTML5, document.write() can only be called from a script that is created by a <script> tag that does not have the async or defer attributes set. With the HTML5 parser, calls to document.write() in any other context either are ignored or replace the document.
+
+Some contexts from which you should not call document.write() include:
+
+scripts created using document.createElement()
+event handlers
+setTimeout()
+setInterval()
+<script async src="...">
+<script defer src="...">
+
+If you use the same mechanism for loading script libraries for all browsers including IE, then your code probably will not be affected by this change. Scripts that serve racy code to Firefox, perhaps while serving safe code to IE, will see a difference due to this change. Firefox writes a warning to the JavaScript console when it ignores a call to document.write().
+----------------------------------------
+
+Lack of Reparsing
+Prior to HTML5, parsers reparsed the document if they hit the end of the file within certain elements or within comments. For example, if the document lacked a </title> closing tag, the parser would reparse to look for the first '<' in the document, or if a comment was not closed, it would look for the first '>'. This behavior created a security vulnerability. If an attacker could force a premature end-of-file, the parser might change which parts of the document it considered to be executable scripts. In addition, supporting reparsing led to unnecessarily complex parsing code.
+
+With HTML5, parsers no longer reparse documents. This change has the following consequences for web developers:
+
+If you omit the closing tag for <title>, <style>, <textarea>, or <xmp>, the page will fail to be parsed. IE already fails to parse documents with a missing </title> tag, so if you test with IE, you probably don't have that problem.
+If you forget to close a comment, the page will most likely fail to be parsed. However, unclosed comments often already break in existing browsers for one reason or another, so it's unlikely that you have this issue in sites that are tested in multiple browsers.
+In an inline script, in order to use the literal strings <script,  </script>, and <!--, you should prevent them from being parsed literally by expressing them as \u003cscript,\u003c/script>, and \u003c!--. The older practice of escaping the string </script> by surrounding it with comment markers, while supported by HTML5, is problematic in cases where the closing comment marker is omitted (see preceding point). You can avoid such problems by using the character code for the initial '<' instead. (It is valid to use an escape character, e.g., <\/script>, but this strategy does not work for <script and <!--, because \s and \! are not valid JavaScript escapes; the character code strategy is more general-purpose.)
+Gecko 2 introduces a new parser, based on HTML5. The HTML parser is one of the most complicated and sensitive pieces of a browser. It controls how your HTML source code is turned into web pages and, as such, changes to it are rare. The new parser is faster, complies with the HTML5 standard, and enables a lot of new functionality as well.
+
+The new parser introduces these major improvements:
+
+You can now use SVG and MathML inline in HTML5 pages, without XML namespace syntax.
+Parsing is now done in a separate thread from Firefox’s main UI thread, improving overall browser responsiveness.
+Calls to innerHTML are a lot faster.
+Dozens of long-standing parser related bugs are now fixed.
+
+The HTML5 parsing algorithm has two major parts: tokenization and tree building. Tokenization is the process of splitting the source stream into tags, text, comments, and attributes inside tags. The tree building phase takes the tags and the interleaving text and comments and builds the DOM tree.
+
+The coolest thing about the new HTML5 parser is the ability to use SVG and MathML inline in regular HTML.
+
+Performance improvement with speculative parsing
+Unrelated to the requirements of HTML5 specification, the Gecko 2 parser uses speculative parsing, in which it continues parsing a document while scripts are being downloaded and executed. This results in improved performance compared to older parsers, because most of the time, Gecko can complete these tasks in parallel.
+
+To best take advantage of speculative parsing, and help your pages to load as quickly as possible, ensure that when you call document.write(), you write a balanced sub-tree within that chunk of script. A balanced sub-tree is HTML code in which any elements that are opened are also closed, so that after the script, the elements left open are the same ones that were open before the script. The open and closing tags do not need to be written by the same document.write() call, as long as they are within the same <script> tag.
+
+Please note that you shouldn't use end tags for void elements that don't have end tags: <area>, <base>, <br>, <col>, <command>, <embed>, <hr>, <img>, <input>, <keygen>, <link>, <meta>, <param>, <source> and <wbr>. (There are also some element whose end tags can be omitted in some cases, such as <p> in the example below, but it's simpler to always use end tags for those elements than to make sure that the end tags are only omitted when they aren't necessary.)
+
+For example, the following code writes a balanced sub-tree:
+
+<script>
+  document.write("<div>");
+  document.write("<p>Some content goes here.</p>");
+  document.write("</div>");
+</script>
+<!-- Non-script HTML goes here. -->
+In contrast, the following code contains two scripts with unbalanced sub-trees, which causes speculative parsing to fail and therefore the time to parse the document is longer.
+
+<script>document.write("<div>");</script>
+<p>Some content goes here.</p>
+<script>document.write("</div>");</script>
